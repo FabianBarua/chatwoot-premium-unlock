@@ -4,6 +4,8 @@ x-base-config: &base-config
   image: chatwoot/chatwoot:v4.14.2
   volumes:
     - chatwoot-storage:/app/storage
+    - /home/chatwoot-premium-unlock/custom_configs/zzz_local_premium_unlock.rb:/app/config/initializers/zzz_local_premium_unlock.rb:ro
+
   environment:
     - FRONTEND_URL=${FRONTEND_URL}
     - SECRET_KEY_BASE=${SECRET_KEY_BASE}
