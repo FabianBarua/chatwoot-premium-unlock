@@ -10,8 +10,7 @@
 #   com.docker.compose.service = chatwoot-rails | chatwoot-sidekiq
 #
 # NO usa "docker compose up" local (romperia Traefik/labels de Dokploy).
-# Aplica con docker cp + restart. Para persistir tras redeploy Dokploy,
-# pega el composefile (con el volume del activador) en el panel de Dokploy.
+# Aplica con docker cp + restart. No requiere cambios en el compose de Dokploy.
 
 set -euo pipefail
 
@@ -172,25 +171,14 @@ RUBY
 
 write_dokploy_notes() {
   cat > "${SCRIPT_DIR}/DOKPLOY-PERSIST.txt" <<EOF
-Para que el activador sobreviva a redeploys de Dokploy:
+Sin editar compose en Dokploy.
 
-1. Sube esta carpeta al servidor (si aún no está):
-   ${SCRIPT_DIR}
+Tras cada redeploy de Chatwoot, ejecuta de nuevo:
+  cd ${SCRIPT_DIR} && ./newscript.sh
 
-2. En Dokploy → Server-Xplus → chatwoot → Compose, pega el composefile
-   de esta carpeta (ya incluye el volume del activador).
-
-3. Asegúrate de que la ruta del bind mount exista en el host:
-   ${INIT_FILE}
-
-   Si Dokploy no resuelve rutas relativas, usa ruta absoluta en el compose:
-   - ${INIT_FILE}:${INIT_TARGET}:ro
-
-4. Redeploy desde Dokploy (una sola vez tras actualizar el compose).
-
-Mientras tanto, el activador ya está activo vía docker cp hasta el próximo redeploy.
+El activador se inyecta con docker cp (no usa bind mounts).
 EOF
-  log "Notas Dokploy: ${SCRIPT_DIR}/DOKPLOY-PERSIST.txt"
+  log "Notas: ${SCRIPT_DIR}/DOKPLOY-PERSIST.txt"
 }
 
 copy_into_container() {
@@ -253,9 +241,8 @@ apply() {
   verify_premium
   write_dokploy_notes
 
-  log ""
   log "Listo. Premium activo en ${COMPOSE_PROJECT}."
-  log "Tras el próximo redeploy Dokploy, actualiza el compose (ver DOKPLOY-PERSIST.txt)."
+  log "Tras un redeploy Dokploy, ejecuta de nuevo: ./newscript.sh"
 }
 
 remove() {
