@@ -74,6 +74,14 @@ detect_chatwoot_stack() {
   fi
 }
 
+ensure_init_file_path() {
+  if [[ -d "${INIT_FILE}" ]]; then
+    log "WARN: ${INIT_FILE} es un directorio (Docker crea carpeta si el mount no existía)."
+    log "      Eliminando directorio para recrear el archivo..."
+    rm -rf "${INIT_FILE}"
+  fi
+}
+
 print_status() {
   detect_chatwoot_stack
   log "Proyecto Compose: ${COMPOSE_PROJECT}"
@@ -82,6 +90,8 @@ print_status() {
   log "Initializer:      ${INIT_FILE}"
   if [[ -f "${INIT_FILE}" ]]; then
     log "Archivo local:    OK"
+  elif [[ -d "${INIT_FILE}" ]]; then
+    log "Archivo local:    ERROR (es un directorio — ejecuta ./newscript.sh para corregir)"
   else
     log "Archivo local:    no generado aún"
   fi
@@ -94,6 +104,7 @@ print_status() {
 
 write_initializer() {
   mkdir -p "${CONFIG_DIR}"
+  ensure_init_file_path
   cat > "${INIT_FILE}" <<'RUBY'
 # frozen_string_literal: true
 # Inyectado por newscript.sh

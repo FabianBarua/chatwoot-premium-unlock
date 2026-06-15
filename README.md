@@ -46,7 +46,10 @@ Debe mostrar: `enterprise`
 
 (Ajusta la ruta si clonaste en otro sitio.)
 
-3. Redeploy una vez.
+3. **Primero** ejecuta `./newscript.sh` (crea el archivo en el host).
+4. **Después** redeploy en Dokploy.
+
+> Si montas el volume antes de que exista el archivo, Docker crea una **carpeta** con ese nombre. El script lo corrige solo; o manualmente: `rm -rf custom_configs/zzz_local_premium_unlock.rb`
 
 El `composefile` de este repo ya trae esa línea.
 
