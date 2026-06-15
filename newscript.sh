@@ -10,7 +10,8 @@
 #   com.docker.compose.service = chatwoot-rails | chatwoot-sidekiq
 #
 # NO usa "docker compose up" local (romperia Traefik/labels de Dokploy).
-# Aplica con docker cp + restart. No requiere cambios en el compose de Dokploy.
+# Aplica con docker cp + restart. Para persistir tras redeploy Dokploy,
+# pega el composefile (con el volume del activador) en el panel de Dokploy.
 
 set -euo pipefail
 
@@ -75,10 +76,19 @@ detect_chatwoot_stack() {
 
 ensure_init_file_path() {
   if [[ -d "${INIT_FILE}" ]]; then
-    log "WARN: ${INIT_FILE} es un directorio (Docker crea carpeta si el mount no existía)."
-    log "      Eliminando directorio para recrear el archivo..."
-    rm -rf "${INIT_FILE}"
+    log "WARN: ${INIT_FILE} es un directorio — eliminando..."
+    if ! rm -rf "${INIT_FILE}"; then
+      die "No se pudo borrar. Para chatwoot en Dokploy, redeploy sin el volume, luego ./newscript.sh"
+    fi
   fi
+  if [[ -e "${INIT_FILE}" && ! -f "${INIT_FILE}" ]]; then
+    die "${INIT_FILE} existe pero no es un archivo regular"
+  fi
+}
+
+prepare_host_initializer() {
+  mkdir -p "${CONFIG_DIR}"
+  ensure_init_file_path
 }
 
 print_status() {
@@ -102,8 +112,7 @@ print_status() {
 }
 
 write_initializer() {
-  mkdir -p "${CONFIG_DIR}"
-  ensure_init_file_path
+  prepare_host_initializer
   cat > "${INIT_FILE}" <<'RUBY'
 # frozen_string_literal: true
 # Inyectado por newscript.sh
@@ -171,14 +180,25 @@ RUBY
 
 write_dokploy_notes() {
   cat > "${SCRIPT_DIR}/DOKPLOY-PERSIST.txt" <<EOF
-Sin editar compose en Dokploy.
+Para que el activador sobreviva a redeploys de Dokploy:
 
-Tras cada redeploy de Chatwoot, ejecuta de nuevo:
-  cd ${SCRIPT_DIR} && ./newscript.sh
+1. Sube esta carpeta al servidor (si aún no está):
+   ${SCRIPT_DIR}
 
-El activador se inyecta con docker cp (no usa bind mounts).
+2. En Dokploy → Server-Xplus → chatwoot → Compose, pega el composefile
+   de esta carpeta (ya incluye el volume del activador).
+
+3. Asegúrate de que la ruta del bind mount exista en el host:
+   ${INIT_FILE}
+
+   Si Dokploy no resuelve rutas relativas, usa ruta absoluta en el compose:
+   - ${INIT_FILE}:${INIT_TARGET}:ro
+
+4. Redeploy desde Dokploy (una sola vez tras actualizar el compose).
+
+Mientras tanto, el activador ya está activo vía docker cp hasta el próximo redeploy.
 EOF
-  log "Notas: ${SCRIPT_DIR}/DOKPLOY-PERSIST.txt"
+  log "Notas Dokploy: ${SCRIPT_DIR}/DOKPLOY-PERSIST.txt"
 }
 
 copy_into_container() {
@@ -229,6 +249,7 @@ verify_premium() {
 }
 
 apply() {
+  prepare_host_initializer
   detect_chatwoot_stack
   log "Stack: ${COMPOSE_PROJECT}"
 
@@ -241,8 +262,9 @@ apply() {
   verify_premium
   write_dokploy_notes
 
+  log ""
   log "Listo. Premium activo en ${COMPOSE_PROJECT}."
-  log "Tras un redeploy Dokploy, ejecuta de nuevo: ./newscript.sh"
+  log "Tras el próximo redeploy Dokploy, actualiza el compose (ver DOKPLOY-PERSIST.txt)."
 }
 
 remove() {

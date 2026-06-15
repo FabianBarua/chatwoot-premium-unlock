@@ -1,6 +1,6 @@
 # Chatwoot Premium Unlock
 
-Activa funciones **Enterprise/premium** en Chatwoot (Docker / Dokploy) **sin tocar el compose**.
+Activa funciones **Enterprise/premium** en Chatwoot (Docker / Dokploy) sin tocar el código fuente.
 
 ## Instalación
 
@@ -27,32 +27,37 @@ docker exec $(docker ps -qf label=com.docker.compose.service=chatwoot-rails) \
   bundle exec rails runner "puts ChatwootHub.pricing_plan" 2>/dev/null | tail -1
 ```
 
-Debe mostrar: `enterprise`
+→ `enterprise`
 
-## Dokploy — no editar compose
+## Persistir en Dokploy (solo 1 línea)
 
-El script usa `docker cp` + restart. **No añadas volumes** al compose de Dokploy.
+**Orden importante:**
 
-Tras cada **redeploy** de Chatwoot en Dokploy, vuelve a ejecutar:
+1. `./newscript.sh` — crea el archivo (borra carpeta si Docker la creó antes)
+2. En Dokploy → chatwoot → Compose, en `x-base-config` → `volumes`, **añade solo**:
 
-```bash
-cd /home/chatwoot-premium-unlock && ./newscript.sh
+```yaml
+    - /home/chatwoot-premium-unlock/custom_configs/zzz_local_premium_unlock.rb:/app/config/initializers/zzz_local_premium_unlock.rb:ro
 ```
 
-## Arreglar deploy roto (añadiste un volume antes)
+3. Redeploy en Dokploy
 
-Quita la línea del activador en Dokploy → chatwoot → Compose (deja solo `chatwoot-storage`), redeploy, luego:
+No cambies commands ni el resto del compose. Ver `dokploy-volume.txt`.
+
+## Error "not a directory" al deploy
+
+El volume se añadió **antes** de que existiera el archivo. Docker creó una **carpeta**.
 
 ```bash
 cd /home/chatwoot-premium-unlock
-rm -rf custom_configs/zzz_local_premium_unlock.rb
-mkdir -p custom_configs
-./newscript.sh
+# Quita el volume del compose en Dokploy y redeploy (o para rails/sidekiq)
+./newscript.sh              # borra carpeta y crea el .rb
+file custom_configs/zzz_local_premium_unlock.rb   # debe ser archivo, no directory
+# Añade el volume otra vez y redeploy
 ```
 
-## Qué hace
+## Notas
 
-- Detecta `chatwoot-rails` y `chatwoot-sidekiq`
-- Copia un initializer Ruby al contenedor
-- Reinicia rails + sidekiq (~30s downtime)
-- Plan `enterprise` + features premium en todas las cuentas
+- El script elimina `custom_configs/zzz_local_premium_unlock.rb` si es carpeta
+- Sin el volume en Dokploy, el premium se pierde en el próximo redeploy
+- `docker-compose.yaml` del repo es referencia **sin** el volume (lo añades tú en Dokploy)
