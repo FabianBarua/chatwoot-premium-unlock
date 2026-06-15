@@ -37,21 +37,27 @@ Debe mostrar: `enterprise`
 
 ## Persistir en Dokploy
 
-1. Ejecuta `./newscript.sh` (genera `custom_configs/zzz_local_premium_unlock.rb`)
-2. En **Dokploy → chatwoot → Compose**, añade en `x-base-config` → `volumes`:
+1. Ejecuta `./newscript.sh` en el servidor (crea el `.rb` dentro de `custom_configs/`).
+2. Pega el `docker-compose.yaml` de este repo en **Dokploy → chatwoot → Compose**.
+3. Redeploy.
 
-```yaml
-- /home/chatwoot-premium-unlock/custom_configs/zzz_local_premium_unlock.rb:/app/config/initializers/zzz_local_premium_unlock.rb:ro
+Monta la **carpeta** `custom_configs/` (no el archivo suelto). Al arrancar, rails/sidekiq copian el initializer al contenedor.
+
+## Si falla el deploy: "not a directory"
+
+El volume apuntaba a un **archivo** que Docker convirtió en **carpeta**. Arreglo:
+
+```bash
+cd /home/chatwoot-premium-unlock
+docker stop serverxplus-chatwoot-zttbp0-chatwoot-rails-1 \
+  serverxplus-chatwoot-zttbp0-chatwoot-sidekiq-1 2>/dev/null || true
+rm -rf custom_configs/zzz_local_premium_unlock.rb
+mkdir -p custom_configs
+./newscript.sh
+file custom_configs/zzz_local_premium_unlock.rb   # debe decir "ASCII" o "Ruby", NO "directory"
+git pull   # compose con mount de carpeta
+# Actualiza compose en Dokploy y redeploy
 ```
-
-(Ajusta la ruta si clonaste en otro sitio.)
-
-3. **Primero** ejecuta `./newscript.sh` (crea el archivo en el host).
-4. **Después** redeploy en Dokploy.
-
-> Si montas el volume antes de que exista el archivo, Docker crea una **carpeta** con ese nombre. El script lo corrige solo; o manualmente: `rm -rf custom_configs/zzz_local_premium_unlock.rb`
-
-El `composefile` de este repo ya trae esa línea.
 
 ## Qué hace
 
@@ -63,5 +69,5 @@ El `composefile` de este repo ya trae esa línea.
 ## Notas
 
 - Solo afecta el stack Chatwoot detectado
-- Sin el volume en Dokploy, se pierde en el próximo redeploy
+- Orden: `./newscript.sh` **antes** del redeploy con compose nuevo
 - No modifica la imagen oficial `chatwoot/chatwoot`
