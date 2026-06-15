@@ -4,8 +4,9 @@ x-base-config: &base-config
   image: chatwoot/chatwoot:v4.14.2
   volumes:
     - chatwoot-storage:/app/storage
-    # Activador premium (generado por newscript.sh). En Dokploy usa ruta absoluta del host.
-    - ./custom_configs/zzz_local_premium_unlock.rb:/app/config/initializers/zzz_local_premium_unlock.rb:ro
+    # Persistir activador premium (ejecutar ./newscript.sh antes del redeploy).
+    # En Dokploy usa ruta ABSOLUTA del host:
+    - /home/chatwoot-premium-unlock/custom_configs/zzz_local_premium_unlock.rb:/app/config/initializers/zzz_local_premium_unlock.rb:ro
   environment:
     - FRONTEND_URL=${FRONTEND_URL}
     - SECRET_KEY_BASE=${SECRET_KEY_BASE}

@@ -214,11 +214,18 @@ wait_for_rails() {
 
 verify_premium() {
   local plan
-  plan="$(docker exec "${RAILS_CONTAINER}" bundle exec rails runner "puts ChatwootHub.pricing_plan" 2>/dev/null || true)"
+  plan="$(
+    docker exec "${RAILS_CONTAINER}" bundle exec rails runner \
+      "warn_level = Logger::ERROR; puts ChatwootHub.pricing_plan" 2>/dev/null \
+      | grep -E '^(enterprise|community|premium)$' \
+      | tail -1 \
+      || true
+  )"
   if [[ "$plan" == "enterprise" ]]; then
     log "Verificado: pricing_plan = enterprise"
   else
-    log "WARN: pricing_plan = '${plan:-error}' (esperado: enterprise)"
+    log "WARN: no se pudo confirmar pricing_plan (got: '${plan:-vacío}')"
+    log "      Comprueba: docker exec ${RAILS_CONTAINER} bundle exec rails runner \"puts ChatwootHub.pricing_plan\" | tail -1"
   fi
 }
 
