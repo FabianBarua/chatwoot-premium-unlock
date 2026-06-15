@@ -27,7 +27,9 @@ docker exec $(docker ps -qf label=com.docker.compose.service=chatwoot-rails) \
   bundle exec rails runner "puts ChatwootHub.pricing_plan" 2>/dev/null | tail -1
 ```
 
-→ `enterprise`
+→ `enterprise` (ambos checks)
+
+Tras activar Captain: **Ctrl+Shift+R** en el navegador (el plan se inyecta en `window.chatwootConfig` al cargar la página).
 
 ## Persistir en Dokploy (solo 1 línea)
 

@@ -120,8 +120,24 @@ write_initializer() {
 module LocalPremiumUnlock
   UNLOCKED_PLAN = 'enterprise'
   UNLOCKED_AGENT_QUANTITY = 99_999
+  CAPTAIN_FEATURES = %w[
+    captain_integration
+    captain_integration_v2
+    captain_tasks
+    custom_tools
+    captain_document_auto_sync
+  ].freeze
 
   module_function
+
+  def unlock_installation_plan!
+    %w[INSTALLATION_PRICING_PLAN INSTALLATION_PRICING_PLAN_QUANTITY].each do |name|
+      config = InstallationConfig.find_or_initialize_by(name: name)
+      config.value = name == 'INSTALLATION_PRICING_PLAN_QUANTITY' ? UNLOCKED_AGENT_QUANTITY : UNLOCKED_PLAN
+      config.save!
+    end
+    GlobalConfig.clear_cache
+  end
 
   def premium_feature_names
     @premium_feature_names ||= begin
@@ -136,8 +152,13 @@ module LocalPremiumUnlock
   end
 
   def activate_account!(account)
-    account.enable_features(*premium_feature_names)
+    account.enable_features(*(premium_feature_names + CAPTAIN_FEATURES))
     account.custom_attributes = (account.custom_attributes || {}).merge('plan_name' => 'Enterprise')
+  end
+
+  def activate_captain_preferences!(account)
+    defaults = Llm::Models.feature_keys.index_with { true }
+    account.captain_features = (account.captain_features || {}).merge(defaults)
     account.save!
   end
 
@@ -145,7 +166,10 @@ module LocalPremiumUnlock
     return unless defined?(ChatwootApp) && ChatwootApp.enterprise?
 
     Account.find_in_batches do |batch|
-      batch.each { |account| activate_account!(account) }
+      batch.each do |account|
+        activate_account!(account)
+        activate_captain_preferences!(account)
+      end
     end
   end
 
@@ -172,6 +196,7 @@ Rails.application.config.to_prepare do
 end
 
 Rails.application.config.after_initialize do
+  LocalPremiumUnlock.unlock_installation_plan!
   LocalPremiumUnlock.activate_all!
 end
 RUBY
@@ -232,19 +257,26 @@ wait_for_rails() {
 }
 
 verify_premium() {
-  local plan
+  local plan install_plan
   plan="$(
     docker exec "${RAILS_CONTAINER}" bundle exec rails runner \
-      "warn_level = Logger::ERROR; puts ChatwootHub.pricing_plan" 2>/dev/null \
+      "puts ChatwootHub.pricing_plan" 2>/dev/null \
       | grep -E '^(enterprise|community|premium)$' \
       | tail -1 \
       || true
   )"
-  if [[ "$plan" == "enterprise" ]]; then
-    log "Verificado: pricing_plan = enterprise"
+  install_plan="$(
+    docker exec "${RAILS_CONTAINER}" bundle exec rails runner \
+      "puts GlobalConfig.get_value('INSTALLATION_PRICING_PLAN')" 2>/dev/null \
+      | grep -E '^(enterprise|community|premium)$' \
+      | tail -1 \
+      || true
+  )"
+  if [[ "$plan" == "enterprise" && "$install_plan" == "enterprise" ]]; then
+    log "Verificado: pricing_plan + INSTALLATION_PRICING_PLAN = enterprise"
   else
-    log "WARN: no se pudo confirmar pricing_plan (got: '${plan:-vacío}')"
-    log "      Comprueba: docker exec ${RAILS_CONTAINER} bundle exec rails runner \"puts ChatwootHub.pricing_plan\" | tail -1"
+    log "WARN: plan=${plan:-?} install=${install_plan:-?} (ambos deben ser enterprise)"
+    log "      Tras ./newscript.sh, recarga la página con Ctrl+Shift+R"
   fi
 }
 
