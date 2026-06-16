@@ -10,8 +10,9 @@
 #   com.docker.compose.service = chatwoot-rails | chatwoot-sidekiq
 #
 # NO usa "docker compose up" local (romperia Traefik/labels de Dokploy).
-# Aplica con docker cp + restart. Para persistir tras redeploy Dokploy,
-# pega el composefile (con el volume del activador) en el panel de Dokploy.
+# Aplica: escribe el .rb en el host + restart.
+# Sin volume en Dokploy: docker cp al contenedor.
+# Con volume montado: solo host + restart (docker cp falla: "device or resource busy").
 
 set -euo pipefail
 
@@ -103,6 +104,14 @@ print_status() {
     log "Archivo local:    ERROR (es un directorio — ejecuta ./newscript.sh para corregir)"
   else
     log "Archivo local:    no generado aún"
+  fi
+  local mount_source
+  mount_source="$(init_bind_mount_source "${RAILS_CONTAINER}")"
+  if [[ -n "${mount_source}" ]]; then
+    log "Deploy:           volume bind-mount (persistente)"
+    log "Mount host:       ${mount_source}"
+  else
+    log "Deploy:           docker cp (sin volume en compose)"
   fi
   if docker exec "${RAILS_CONTAINER}" test -f "${INIT_TARGET}" 2>/dev/null; then
     log "En contenedor:    activador presente"
@@ -226,14 +235,33 @@ EOF
   log "Notas Dokploy: ${SCRIPT_DIR}/DOKPLOY-PERSIST.txt"
 }
 
-copy_into_container() {
-  docker cp "${INIT_FILE}" "$1:${INIT_TARGET}"
-  log "Copiado → $1"
+init_bind_mount_source() {
+  local container="$1"
+  docker inspect "$container" \
+    --format '{{range .Mounts}}{{if eq .Destination "'"${INIT_TARGET}"'"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true
+}
+
+deploy_initializer_to_container() {
+  local container="$1"
+  local mount_source
+  mount_source="$(init_bind_mount_source "$container")"
+  if [[ -n "${mount_source}" ]]; then
+    log "Volume montado en ${container} — omitiendo docker cp"
+    log "  host: ${mount_source}"
+    return 0
+  fi
+  docker cp "${INIT_FILE}" "${container}:${INIT_TARGET}"
+  log "Copiado → ${container}"
 }
 
 remove_from_container() {
-  docker exec "$1" rm -f "${INIT_TARGET}" 2>/dev/null || true
-  log "Limpiado → $1"
+  local container="$1"
+  if [[ -n "$(init_bind_mount_source "$container")" ]]; then
+    log "Volume montado en ${container} — se limpia solo el archivo en host"
+    return 0
+  fi
+  docker exec "$container" rm -f "${INIT_TARGET}" 2>/dev/null || true
+  log "Limpiado → ${container}"
 }
 
 restart_stack() {
@@ -286,8 +314,8 @@ apply() {
   log "Stack: ${COMPOSE_PROJECT}"
 
   write_initializer
-  copy_into_container "${RAILS_CONTAINER}"
-  [[ -n "${SIDEKIQ_CONTAINER:-}" ]] && copy_into_container "${SIDEKIQ_CONTAINER}"
+  deploy_initializer_to_container "${RAILS_CONTAINER}"
+  [[ -n "${SIDEKIQ_CONTAINER:-}" ]] && deploy_initializer_to_container "${SIDEKIQ_CONTAINER}"
 
   restart_stack
   wait_for_rails
